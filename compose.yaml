@@ -1,0 +1,81 @@
+# Local stack: API + customer chat + staff dashboard, with persistent SQLite storage.
+#
+#   cp .env.example .env        # add GEMINI_API_KEY for chat; set a real signing secret
+#   docker compose up --build
+#
+# Ports are bound to 127.0.0.1 only. Data persists in the "support-data" volume
+# (remove it with `docker compose down -v`).
+
+name: support-agent
+
+x-image: &image
+  build: .
+  image: support-agent:local
+  restart: unless-stopped
+
+x-backend-env: &backend-env
+  # Only the backend gets .env (Gemini key, signing secret). It is optional so the
+  # stack still starts without it; chat then reports "assistant not configured".
+  env_file:
+    - path: .env
+      required: false
+
+services:
+  init:
+    <<: [*image, *backend-env]
+    command: ["support-crm", "init-db", "--if-empty"]
+    restart: "no"
+    healthcheck:
+      disable: true
+    volumes:
+      - support-data:/data
+    environment:
+      # `environment` wins over env_file, so a .env copied from .env.example cannot move
+      # the databases off the volume.
+      SUPPORT_AGENT_DATABASE_URL: sqlite:////data/crm.db
+      SUPPORT_AGENT_CHECKPOINT_DB_PATH: /data/checkpoints.db
+
+  api:
+    <<: [*image, *backend-env]
+    command: ["uvicorn", "--factory", "support_agent.api.app:create_app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - support-data:/data
+    environment:
+      SUPPORT_AGENT_DATABASE_URL: sqlite:////data/crm.db
+      SUPPORT_AGENT_CHECKPOINT_DB_PATH: /data/checkpoints.db
+      HEALTH_URL: http://127.0.0.1:8000/health
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  customer-ui:
+    <<: *image
+    # The UIs have no database volume and no secrets: they only call the API.
+    command: ["streamlit", "run", "src/support_agent/ui/customer_app.py",
+              "--server.port", "8501", "--server.address", "0.0.0.0", "--server.headless", "true"]
+    ports:
+      - "127.0.0.1:8501:8501"
+    environment:
+      SUPPORT_AGENT_API_URL: http://api:8000
+      HEALTH_URL: http://127.0.0.1:8501/_stcore/health
+    depends_on:
+      api:
+        condition: service_healthy
+
+  staff-ui:
+    <<: *image
+    command: ["streamlit", "run", "src/support_agent/ui/staff_app.py",
+              "--server.port", "8502", "--server.address", "0.0.0.0", "--server.headless", "true"]
+    ports:
+      - "127.0.0.1:8502:8502"
+    environment:
+      SUPPORT_AGENT_API_URL: http://api:8000
+      HEALTH_URL: http://127.0.0.1:8502/_stcore/health
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  support-data:

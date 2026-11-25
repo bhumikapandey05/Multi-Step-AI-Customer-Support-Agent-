@@ -1,0 +1,50 @@
+# --- Secrets and environment files (only the example is committed)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.streamlit/secrets.toml
+
+# --- Local data: CRM databases and LangGraph checkpoints (they contain conversations)
+data/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# --- Logs
+*.log
+logs/
+nohup.out
+
+# --- Evaluation output: only the published Phase 5 reports are committed.
+# Sandboxes live in the system temp dir (support-eval-*) and are deleted after each run.
+reports/evals/*
+!reports/evals/phase5-offline-all/
+!reports/evals/phase5-live-smoke/
+support-eval-*/
+
+# --- Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# --- Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --- IDE and OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
