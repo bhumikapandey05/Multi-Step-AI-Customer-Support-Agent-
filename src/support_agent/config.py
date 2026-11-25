@@ -9,6 +9,10 @@ from sqlalchemy.engine import make_url
 
 DEV_SECRET_KEY = "dev-only-insecure-secret-key-change-me-please"
 MIN_SECRET_LENGTH = 32
+# Secrets that are published in this repository (the built-in default and the old
+# .env.example placeholder). Anyone could forge tokens with them, so production refuses them.
+PUBLIC_SECRETS = frozenset({DEV_SECRET_KEY, "change-me-to-a-long-random-string-of-48-chars"})
+_PLACEHOLDER_MARKERS = ("change-me", "changeme", "placeholder", "your-secret", "example")
 # A free-tier Gemini Flash model. Override with GEMINI_MODEL (e.g. gemini-3.5-flash-lite
 # for higher free-tier quotas).
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
@@ -59,6 +63,13 @@ class Settings(BaseSettings):
     workflow_retry_base_delay_seconds: float = Field(default=0.2, ge=0, le=10)
     staff_session_ttl_minutes: int = Field(default=60, ge=1, le=12 * 60)
 
+    @field_validator("auth_secret_key", mode="before")
+    @classmethod
+    def _blank_secret_uses_default(cls, value: Any) -> Any:
+        # A blank SUPPORT_AGENT_AUTH_SECRET_KEY (as in .env.example) means "not set": the
+        # development default is used locally, and production refuses to start.
+        return DEV_SECRET_KEY if isinstance(value, str) and not value.strip() else value
+
     @field_validator("gemini_api_key", mode="before")
     @classmethod
     def _blank_key_is_missing(cls, value: Any) -> Any:
@@ -71,8 +82,12 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"SUPPORT_AGENT_AUTH_SECRET_KEY must be at least {MIN_SECRET_LENGTH} characters"
             )
-        if self.environment == "production" and secret == DEV_SECRET_KEY:
-            raise ValueError("The development secret key cannot be used in production")
+        if self.environment == "production" and self.uses_public_secret:
+            raise ValueError(
+                "A private SUPPORT_AGENT_AUTH_SECRET_KEY is required in production; the "
+                "development default and placeholder values are public. Generate one with: "
+                'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+            )
         return self
 
     @property
@@ -83,6 +98,12 @@ class Settings(BaseSettings):
         if url.get_backend_name() == "sqlite" and url.database not in (None, "", ":memory:"):
             return Path(url.database).with_name("checkpoints.db")
         return Path("data/checkpoints.db")
+
+    @property
+    def uses_public_secret(self) -> bool:
+        """True for the built-in key or any placeholder-looking value: anyone could forge tokens."""
+        secret = self.auth_secret_key.get_secret_value()
+        return secret in PUBLIC_SECRETS or any(m in secret.lower() for m in _PLACEHOLDER_MARKERS)
 
     @property
     def uses_dev_secret(self) -> bool:

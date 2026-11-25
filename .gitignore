@@ -20,6 +20,18 @@ data/
 logs/
 nohup.out
 
+# --- Temporary and credential files
+*.tmp
+*.bak
+*.swp
+*~
+tmp/
+.cache/
+secrets/
+*.secret
+credentials*.json
+service-account*.json
+
 # --- Evaluation output: only the published Phase 5 reports are committed.
 # Sandboxes live in the system temp dir (support-eval-*) and are deleted after each run.
 reports/evals/*

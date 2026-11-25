@@ -43,6 +43,11 @@ def create_app(
     if configure_logs:
         configure_logging(settings.log_level, settings.log_format)
     application = build_application(settings, clock=clock)
+    if settings.uses_public_secret:
+        logger.warning(
+            "Tokens are signed with a public development key. Fine for local demos only; "
+            "set SUPPORT_AGENT_AUTH_SECRET_KEY (required in production)."
+        )
     if not application.schema_exists():
         application.close()
         raise RuntimeError("The database is not initialized. Run `support-crm init-db` first.")

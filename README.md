@@ -48,7 +48,7 @@ stack with real Gemini responses.
 * **A reproducible evaluation harness.** It runs 54 scenarios (39 dev, 15 frozen
   held-out) in isolated sandboxes, injects faults, and checks safety invariants on every
   run. Mutation tests prove each detector fires.
-* **340 automated tests**, lint-clean, and a **Docker Compose** stack with persistent
+* **347 automated tests**, lint-clean, and a **Docker Compose** stack with persistent
   volumes.
 
 ---
@@ -124,7 +124,7 @@ Detailed design notes for each phase are in [docs/DESIGN.md](docs/DESIGN.md).
 | UI | Streamlit (customer chat, staff dashboard) |
 | Data | SQLite + SQLAlchemy 2 (WAL, partial unique indexes, `BEGIN IMMEDIATE`) |
 | Security | PBKDF2 PINs with lockout; HMAC-signed customer/guest/staff tokens with separate keys |
-| Quality | pytest (340 tests), Streamlit `AppTest`, FastAPI `TestClient`, Ruff |
+| Quality | pytest (347 tests), Streamlit `AppTest`, FastAPI `TestClient`, Ruff |
 | Packaging | Docker, Docker Compose (named volume for SQLite) |
 
 ---
@@ -134,12 +134,14 @@ Detailed design notes for each phase are in [docs/DESIGN.md](docs/DESIGN.md).
 Requires Docker Desktop (or Docker Engine with Compose v2).
 
 ```bash
-git clone <your-repo-url> support-agent && cd support-agent
+git clone https://github.com/bhumikapandey05/Multi-Step-AI-Customer-Support-Agent-.git
+cd Multi-Step-AI-Customer-Support-Agent-
 
 # Optional but recommended: chat needs a free Gemini key (https://aistudio.google.com/apikey)
 cp .env.example .env
 #   set GEMINI_API_KEY=...
-#   set SUPPORT_AGENT_AUTH_SECRET_KEY to: python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+#   set SUPPORT_AGENT_AUTH_SECRET_KEY to the output of:
+#     python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 
 docker compose up --build -d     # builds one image, seeds fictional data, starts 3 services
 docker compose ps                # api, customer-ui, staff-ui should be "healthy"
@@ -328,6 +330,7 @@ roughly 20–40 minutes at 5 requests per minute.
 | Approvals | Atomic decision rows (a unique index per action). `BEGIN IMMEDIATE` makes concurrent writers queue instead of failing. Expired or stale confirmations are refused |
 | Conversations | Each thread is owned by `customer:<id>` or `guest:<session>`; anyone else gets 404. Guests get public policy tools only |
 | Audit | Every CRM call, login, approval, staff decision, and refusal is logged. PINs are never logged, and emails are masked in application logs |
+| Signing secret | Production refuses blank, built-in, or placeholder secrets (`change-me`, `example`, …); a generated value is required |
 | Secrets in Git | `.env`, databases, checkpoints (which contain conversations), logs, IDE files, and eval sandboxes are git-ignored. The Docker build context excludes them too |
 
 ---
@@ -353,7 +356,7 @@ Dockerfile, compose.yaml
 ## Testing and checks
 
 ```bash
-pytest                                   # 340 passed, 2 skipped (live Gemini tests are opt-in)
+pytest                                   # 347 passed, 2 skipped (live Gemini tests are opt-in)
 RUN_LIVE_TESTS=1 pytest -m live          # optional: 2 smoke tests against real Gemini
 ruff check src tests && ruff format --check src tests
 support-crm eval --set all               # offline evaluation (54 scenarios)
@@ -374,7 +377,8 @@ All settings are environment variables (`SUPPORT_AGENT_*`) or `.env`. See
 |---|---|---|
 | `GEMINI_API_KEY` | none | Needed for chat only |
 | `GEMINI_MODEL` | `gemini-3.8-flash` | Any free-tier model ID |
-| `SUPPORT_AGENT_AUTH_SECRET_KEY` | dev placeholder | ≥ 32 chars; signs all tokens. Set your own |
+| `SUPPORT_AGENT_AUTH_SECRET_KEY` | blank → development key | ≥ 32 chars; signs all tokens. Blank uses a public development key (with a startup warning). **Production refuses blank, default, or placeholder values** |
+| `SUPPORT_AGENT_ENVIRONMENT` | `development` | Set `production` for any shared or deployed setup |
 | `SUPPORT_AGENT_DATABASE_URL` | `sqlite:///data/crm.db` | Docker pins `/data/crm.db` on the volume |
 | `SUPPORT_AGENT_CHECKPOINT_DB_PATH` | next to the CRM DB | LangGraph checkpoints |
 | `SUPPORT_AGENT_API_URL` | `http://127.0.0.1:8000` | Used by the Streamlit apps |
@@ -386,6 +390,10 @@ All settings are environment variables (`SUPPORT_AGENT_*`) or `.env`. See
 * **Fictional, single-node demo.** SQLite allows one writer at a time, which is fine for a
   local demo but not for production scale. There are no migrations yet; adding Alembic is
   the next step.
+* **Signing secret in local mode.** With a blank secret, local development signs tokens
+  with a key that is public in this repository; the API logs a warning. Setting
+  `SUPPORT_AGENT_ENVIRONMENT=production` makes startup fail unless a private secret is
+  set.
 * **Home-made tokens.** HMAC-signed tokens suit a local demo. A real deployment would use
   an identity provider (OIDC), HTTPS, and rate limiting on the API.
 * **No payments.** An approved refund records `payout: not_processed`. No money moves, and
